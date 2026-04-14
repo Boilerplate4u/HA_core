@@ -42,6 +42,14 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Fail if translations files are checked in
+        run: |
+          if [ -n "$(find homeassistant/components/*/translations -type f)" ]; then
+              echo "Translations files are checked in, please remove the following files:"
+              find homeassistant/components/*/translations -type f
+              exit 1
+          fi
+
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
@@ -58,6 +66,18 @@ jobs:
       #   with:
       #     ignore-dev: true
 
+  download_translations:
+    name: Download translations
+    if: github.repository_owner == 'home-assistant'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read # To check out the repository
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
       - name: Fail if translations files are checked in
         run: |
           if [ -n "$(find homeassistant/components/*/translations -type f)" ]; then
@@ -65,6 +85,23 @@ jobs:
               find homeassistant/components/*/translations -type f
               exit 1
           fi
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version-file: ".python-version"
+
+      - name: Download Translations
+        run: python3 -m script.translations download
+        env:
+          LOKALISE_TOKEN: ${{ secrets.LOKALISE_TOKEN }} # zizmor: ignore[secrets-outside-env]
+
+      - name: Upload translations
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: translations
+          path: homeassistant/components/*/translations
+          if-no-files-found: error
 
   build_base:
     name: Build ${{ matrix.arch }} base core image without translations
@@ -180,40 +217,6 @@ jobs:
           image-tags: ${{ needs.init.outputs.version }}
           push: true
           version: ${{ needs.init.outputs.version }}
-
-  download_translations:
-    name: Download translations
-    needs: init
-    if: github.repository_owner == 'home-assistant'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read # To check out the repository
-    steps:
-      - name: Checkout the repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          persist-credentials: false
-
-      - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
-        with:
-          python-version-file: ".python-version"
-
-      - name: Download Translations
-        run: python3 -m script.translations download
-        env:
-          LOKALISE_TOKEN: ${{ secrets.LOKALISE_TOKEN }} # zizmor: ignore[secrets-outside-env]
-
-      - name: Archive translations
-        shell: bash
-        run: find ./homeassistant/components/*/translations -name "*.json" | tar zcvf translations.tar.gz -T -
-
-      - name: Upload translations
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
-        with:
-          name: translations
-          path: translations.tar.gz
-          if-no-files-found: error
 
   build_translations:
     name: Build ${{ matrix.arch }} core image with translations
